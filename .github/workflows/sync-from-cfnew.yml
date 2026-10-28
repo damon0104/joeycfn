@@ -147,6 +147,7 @@ jobs:
           fi
       
       - name: 提交并推送更改
+        id: commit_push
         if: steps.check_version.outputs.need_update == 'true'
         run: |
           git config --local user.email "action@github.com"
@@ -156,10 +157,16 @@ jobs:
           
           if git diff --staged --quiet; then
             echo "没有变更需要提交"
+            echo "push_status=no_changes" >> $GITHUB_OUTPUT
           else
             git commit -m "自动同步: 更新到 cfnew ${{ steps.get_latest.outputs.version }}"
-            git push
-            echo "已提交并推送更新"
+            if git push; then
+              echo "已提交并推送更新"
+              echo "push_status=success" >> $GITHUB_OUTPUT
+            else
+              echo "::warning::推送失败（通常是 GITHUB_TOKEN 只有只读权限）。请将仓库 Actions 权限改为 Read and write，或提供可写入令牌。"
+              echo "push_status=failed" >> $GITHUB_OUTPUT
+            fi
           fi
       
       - name: 输出摘要
@@ -171,6 +178,13 @@ jobs:
           if [ "${{ steps.check_version.outputs.need_update }}" = "true" ]; then
             echo "- 状态: ✅ 已更新到新版本" >> $GITHUB_STEP_SUMMARY
             echo "- 下载文件: ${{ steps.get_latest.outputs.file_name }}" >> $GITHUB_STEP_SUMMARY
+            if [ "${{ steps.commit_push.outputs.push_status }}" = "success" ]; then
+              echo "- 推送结果: ✅ 已推送到仓库" >> $GITHUB_STEP_SUMMARY
+            elif [ "${{ steps.commit_push.outputs.push_status }}" = "failed" ]; then
+              echo "- 推送结果: ⚠️ 推送失败（令牌权限不足）" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "- 推送结果: ⏭️ 无变更可推送" >> $GITHUB_STEP_SUMMARY
+            fi
           else
             echo "- 状态: ⏭️ 版本相同，无需更新" >> $GITHUB_STEP_SUMMARY
           fi
